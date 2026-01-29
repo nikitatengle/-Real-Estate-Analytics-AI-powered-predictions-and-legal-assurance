@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Real Estate Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    :root {
+      --glass-bg: rgba(255, 255, 255, 0.15);
+      --glass-border: rgba(255, 255, 255, 0.3);
+      --glass-blur: 10px;
+      --icy-blue: #e0f7fa;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      background-color: var(--icy-blue);
+    }
+    #bg-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      overflow: hidden;
+    }
+    #bg-wrap svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      color: #00796b;
+      text-shadow: 1px 1px 2px #b2dfdb;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 30px;
+      max-width: 1200px;
+      margin: auto;
+    }
+    .chart {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+    }
+    #top-chart {
+      grid-column: span 2;
+    }
+  </style>
+</head>
+<body>
+  <div id="bg-wrap">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path d="M0,50 C20,100 80,0 100,50 L100,100 L0,100 Z" fill="#b2ebf2">
+        <animate attributeName="d" dur="10s" repeatCount="indefinite"
+                 values="M0,50 C20,100 80,0 100,50 L100,100 L0,100 Z;
+                         M0,50 C30,80 70,20 100,50 L100,100 L0,100 Z;
+                         M0,50 C20,100 80,0 100,50 L100,100 L0,100 Z"/>
+      </path>
+    </svg>
+  </div>
+
+  <h2>Interactive Real Estate Dashboard</h2>
+  <input type="file" id="fileInput" accept="application/json"><br><br>
+
+  <div class="container">
+    <div class="chart" id="locationPrice"></div>
+    <div class="chart" id="propertySize"></div>
+    <div class="chart" id="availabilityTrend"></div>
+    <div class="chart" id="areaType"></div>
+    <div class="chart" id="top-chart"></div>
+  </div>
+
+  <script>
+    document.getElementById('fileInput').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+
+      reader.onload = function(e) {
+        const data = JSON.parse(e.target.result);
+
+        const locationMap = {};
+        data.forEach(item => {
+          let sqft = parseFloat(item.total_sqft);
+          if (typeof sqft === 'number' && !isNaN(sqft) && item.price) {
+            const location = item.location;
+            const pricePerSqft = item.price / sqft;
+            if (!locationMap[location]) locationMap[location] = [];
+            locationMap[location].push(pricePerSqft);
+          }
+        });
+        const locs = Object.keys(locationMap);
+        const avgPrices = locs.map(loc => {
+          const avg = locationMap[loc].reduce((a, b) => a + b, 0) / locationMap[loc].length;
+          return avg.toFixed(2);
+        });
+        Plotly.newPlot("locationPrice", [{
+          x: locs,
+          y: avgPrices,
+          type: "bar"
+        }], { title: "Average Price per Sqft by Location", xaxis: { title: "Location" }, yaxis: { title: "₹/sqft" } });
+
+        const sizeCount = {};
+        data.forEach(item => {
+          let size = item.size;
+          if (size) sizeCount[size] = (sizeCount[size] || 0) + 1;
+        });
+        Plotly.newPlot("propertySize", [{
+          labels: Object.keys(sizeCount),
+          values: Object.values(sizeCount),
+          type: "pie"
+        }], { title: "Property Size Distribution" });
+
+        const dateMap = {};
+        data.forEach(item => {
+          const date = item.availability;
+          const price = parseFloat(item.price);
+          if (date && !isNaN(price)) {
+            if (!dateMap[date]) dateMap[date] = [];
+            dateMap[date].push(price);
+          }
+        });
+        const dates = Object.keys(dateMap);
+        const avgDatePrices = dates.map(d => {
+          const avg = dateMap[d].reduce((a, b) => a + b, 0) / dateMap[d].length;
+          return avg.toFixed(2);
+        });
+        Plotly.newPlot("availabilityTrend", [{
+          x: dates,
+          y: avgDatePrices,
+          mode: "lines+markers",
+          type: "scatter"
+        }], { title: "Average Price by Availability Date", xaxis: { title: "Availability" }, yaxis: { title: "Price (Lacs)" } });
+
+        const areaCount = {};
+        data.forEach(item => {
+          let area = item.area_type;
+          if (area) areaCount[area] = (areaCount[area] || 0) + 1;
+        });
+        Plotly.newPlot("areaType", [{
+          x: Object.keys(areaCount),
+          y: Object.values(areaCount),
+          type: "bar"
+        }], { title: "Total Listings by Area Type", xaxis: { title: "Area Type" }, yaxis: { title: "Number of Listings" } });
+
+        const sorted = data.filter(item => item.price).sort((a, b) => b.price - a.price).slice(0, 10);
+        Plotly.newPlot("top-chart", [{
+          x: sorted.map(item => item.location + ' - ' + item.size),
+          y: sorted.map(item => item.price),
+          type: "bar",
+          orientation: 'h'
+        }], { title: "Top 10 Highest Priced Properties", yaxis: { automargin: true }, xaxis: { title: "Price (Lacs)" } });
+      };
+
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
